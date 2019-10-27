@@ -6,19 +6,24 @@ library(tidyr)
 # Individuals are stored in a data frame, containing age and alleles
 
 # Function for calculating a vital rate
-calc.vr = function(alls, rate, mal.rate) c(mal.rate, rate, rate)[apply(alls, 1, sum) + 1] 
+## CURRENTLY MISTAKE IS HERE
+calc.vr = function(alls, params) c(params$mal.rate, params$rate, rate)[apply(alls, 1, sum) + 1] 
 # alls - alleles (coded as 0 or 1)
+# params is list with following elements
 # rate - vital rate value for dominant phenotype (higher vital rate)
 # mal.rate - vital rate for recessive phenotype (lower vital rate, `mal`)
 # sum of alleles of 0 gives recessive, sum 1 or 2 gives dominant
 
 # Function intakes data frame of individuals's alleles, outputs their vital rates
 # (wrapper for use of calc.vr from above)
-ins.vrs = function(alls) {
-  alls %>%
-    mutate(s1 = calc.vr(alls %>% select(s1.a, s1.b), s1, mal.s1),
+ins.vrs = function(alls, params) {
+  attach(params)
+  df = alls %>%
+    mutate(s1 = calc.vr(alls %>% select(s1.a, s1.b), s1, mal.s1), # see note for calc.vr
            s2 = calc.vr(alls %>% select(s2.a, s2.b), s2, mal.s2),
            phi = calc.vr(alls %>% select(phi.a, phi.b), phi, mal.phi))
+  detach(params)
+  return(df)
 }
 # alls is data frame of individuals and their alleles
 
@@ -26,15 +31,17 @@ ins.vrs = function(alls) {
 init.popn = function(params) {
   # Returns population data frame (info below)
 
-  # Initial population size
-  n.init = params$n.init
-  # Frequency of each wild type allele
-  p.s1 = params$p.s1
-  p.s2 = params$p.s2
-  p.phi = params$p.phi
+  attach(params)
+  # Attaches the following variables to namespace:
   
-  # Initial stage distribution (found from SSD of matrix model)
-  init.stage = params$init.stage
+  # # Initial population size
+  # n.init = params$n.init
+  # # Frequency of each wild type allele
+  # p.s1 = params$p.s1
+  # p.s2 = params$p.s2
+  # p.phi = params$p.phi
+  # # Initial stage distribution (found from SSD of matrix model)
+  # init.stage = params$init.stage
   
   # Data frame containing the population
   # At this stage, contains the following:
@@ -44,21 +51,27 @@ init.popn = function(params) {
   #  s1.a, s1.b - two copies of allele for s1; 1 is wild type, 0 is mutant
   #  s2.a, s2.b, phi.a, phi.b - same coding as s1 locus
   
-  data.frame(i = 1:n.init,
-             t = 1,
-             age = sample(0:1, size = n.init, replace = TRUE, prob = init.stage),
-             s1.a = sample(rep(0:1, times = ceiling(n.init * c(1 - p.s1, p.s1))),
-                           size = n.init),
-             s1.b = sample(rep(0:1, times = ceiling(n.init * c(1 - p.s1, p.s1))),
-                           size = n.init),
-             s2.a = sample(rep(0:1, times = ceiling(n.init * c(1 - p.s2, p.s2))),
-                           size = n.init),
-             s2.b = sample(rep(0:1, times = ceiling(n.init * c(1 - p.s2, p.s2))),
-                           size = n.init),
-             phi.a = sample(rep(0:1, times = ceiling(n.init * c(1 - p.phi, p.phi))),
-                            size = n.init),
-             phi.b = sample(rep(0:1, times = ceiling(n.init * c(1 - p.phi, p.phi))),
-                            size = n.init))
+  popn = data.frame(i = 1:n.init,
+                    t = 1,
+                    age = sample(0:1, size = n.init, 
+                                 replace = TRUE, 
+                                 prob = c(init.stage1, init.stage2)),
+                    s1.a = sample(rep(0:1, times = ceiling(n.init * c(1 - p.s1, p.s1))),
+                                  size = n.init),
+                    s1.b = sample(rep(0:1, times = ceiling(n.init * c(1 - p.s1, p.s1))),
+                                  size = n.init),
+                    s2.a = sample(rep(0:1, times = ceiling(n.init * c(1 - p.s2, p.s2))),
+                                  size = n.init),
+                    s2.b = sample(rep(0:1, times = ceiling(n.init * c(1 - p.s2, p.s2))),
+                                  size = n.init),
+                    phi.a = sample(rep(0:1, times = ceiling(n.init * c(1 - p.phi, p.phi))),
+                                   size = n.init),
+                    phi.b = sample(rep(0:1, times = ceiling(n.init * c(1 - p.phi, p.phi))),
+                                   size = n.init))
+  
+  detach(params)
+  
+  return(popn)
 }
 
 sample.alleles = function(df, parents, rate.string) {
@@ -74,13 +87,13 @@ sample.alleles = function(df, parents, rate.string) {
 # rate.string is a string of 's1', 's2', 'phi' used for subsetting columns out of df
 
 # Function to produce offspring
-reproduce = function(popn) {
+reproduce = function(popn, params) {
 
   # Use poisson draws to determine number of offspring for each parent
   # (rate of poisson is dependent on age; if age is 0, rate is 0 (no offspring),
   # if age is 1, then rate is phi)
   assign.parents = popn %>%
-    ins.vrs() %>%
+    ins.vrs(params = params) %>%
     mutate(off = rpois(nrow(.), lambda = ifelse(popn$age, phi, 0)))
   
   # Loop handles whether or not there are any offspring;
@@ -136,12 +149,26 @@ survival = function(popn) {
 
 ## Initialize parameters
 
-# Survival of subadults
-s1 = 0.5
-# Survival of adults
-s2 = 0.6
-# Average fecundity of adults
-phi = 1.05
+params = list(n.init = 99, # initial population size
+              s1 = 0.5, # survival of juveniles
+              s2 = 0.6, # survival of adults
+              phi = 1.05, # fecundity of adults
+              p.s1 = 10/11, # proportion of wild-type s1 allele
+              p.s2 = 10/11, # proportion of wild-type s2 allele
+              p.phi = 10/11, # proportion of wild-type phi allele
+              mu.mal = 0.95, # mean fitness for individual with ONE maladapted allele
+              end.time = 10) # length of simulation
+params = c(params, 
+           # initial stage distribution
+           init.stage = with(params, 
+                             matrix(c(0, phi, s1, s2), byrow = TRUE, nrow = 2) %>%
+                               eigen() %>%
+                               (function(x) x$vectors[,1]) %>%
+                               (function(x) x / sum(x))),
+           # vital rates for recessive individuals
+           mal.s1 = with(params, (mu.mal^2 - s2 * mu.mal) / phi),
+           mal.s2 = with(params, mu.mal - s1*phi/mu.mal),
+           mal.phi = with(params, (mu.mal^2 - s2 * mu.mal) / s1))
 
 # These values were chosen to produce a mean deterministic growth rate (mu) of ~1.08
 # However, there will be variance in these parameters;
@@ -149,44 +176,32 @@ phi = 1.05
 # recruits per adult is Poisson distributed
 # (not sure yet how to calculate the variance around the growth rate...)
 
-## Code below demonstrates deterministic growth rate:
-
-# Constructing a matrix
-m = matrix(c(0, phi, s1, s2), byrow = TRUE, nrow = 2)
-# Eigenvalues and eigenvectors of said matrix
-eigen(m)
-
-# Set maladapted parameters (i.e., recessive parameter values)
-
-# I want to set these in a way where the mean growth rate is equally sensitive to all params.
-# Just realized! The deterministic growth rate will be equally sensitive, but the variance will not.
-# Hmm...
-
-# mu.mal is mean deterministic growth rate if only one rate is maladapted
-# Here setting it to a value less than 1, ensuring population decline
-mu.mal = 0.95
-
-# Setting maladapted vital rates
-mal.s1 = (mu.mal^2 - s2 * mu.mal) / phi
-mal.s2 = mu.mal - s1*phi/mu.mal
-mal.phi = (mu.mal^2 - s2 * mu.mal) / s1
-
-## Exra control parameters
-
-# Initial population size
-n.init = 99
+# Deterministic growth rate (mu)
+with(params, 
+     matrix(c(0, phi, s1, s2), byrow = TRUE, nrow = 2) %>%
+       eigen() %>%
+       (function(x) x$values[1]))
 
 # Seed
 set.seed(1009)
 
-init.sim = function(params) {}
+### Initialize population
+
+### Detach is doing some funky stuff in here!!###
+### Suppressing warnings to make this neater  ###
+all.gens = suppressMessages(init.popn(params = params))
 # t = 1
 
+# Create variable for previous generation
+prev.gen = all.gens
 ### Next, run through generations
 ### For generation in generations 1:t
 
 ## If there are individuals in the next generation,
 ## Produce offspring
+offspring = reproduce(prev.gen, params = params)
+
+
 
 # Intialize offspring data frame
 # Determine parents
