@@ -1,3 +1,4 @@
+library(ggplot2)
 library(dplyr)
 library(tidyr)
 
@@ -149,15 +150,17 @@ survival = function(popn) {
 
 ## Initialize parameters
 
+# the following param combo leads to lambda = 1 (exactly); s1 = 0.5, s2 = 0.6, phi = 0.8
+
 params = list(n.init = 99, # initial population size
               s1 = 0.5, # survival of juveniles
               s2 = 0.6, # survival of adults
-              phi = 1.0, # fecundity of adults
+              phi = 0.9, # fecundity of adults
               p.s1 = 10/11, # proportion of wild-type s1 allele
               p.s2 = 10/11, # proportion of wild-type s2 allele
               p.phi = 10/11, # proportion of wild-type phi allele
               mu.mal = 0.95, # mean fitness for individual with ONE maladapted allele
-              end.time = 10) # length of simulation
+              end.time = 30) # length of simulation
 params = c(params, 
            # initial stage distribution
            init.stage = with(params, 
@@ -195,7 +198,9 @@ all.gens = init.popn(params = params)
 # Create variable for previous generation
 prev.gen = all.gens
 
-for (t in 1:params$end.time) {
+for (t in 2:params$end.time) {
+  
+  print(t)
   
   ### Next, run through generations
   ### For generation in generations 1:t
@@ -215,4 +220,29 @@ for (t in 1:params$end.time) {
   
 }
 
-table(all.gens$t) %>% plot(type = 'l')
+n.by.t = all.gens %>%
+  group_by(t) %>%
+  summarise(n = n())
+
+plot(n ~ t, n.by.t, type = 'l')
+
+alleles.by.t = all.gens %>%
+  group_by(t) %>%
+  summarise(mean.s1 = 0.5 * mean(s1.a + s1.b),
+            mean.s2 = 0.5 * mean(s2.a + s2.b),
+            mean.phi = 0.5 * mean(phi.a + phi.b),
+            rec.s1 = mean(!(s1.a + s1.b)),
+            rec.s2 = mean(!(s2.a + s2.b)),
+            rec.phi = mean(!(phi.a + phi.b)))
+
+alleles.by.t %>%
+  ggplot(aes(x = t)) +
+  geom_line(aes(y = mean.s1), col = 'red') +
+  geom_line(aes(y = mean.s2), col = 'green') +
+  geom_line(aes(y = mean.phi), col = 'blue')
+
+alleles.by.t %>%
+  ggplot(aes(x = t)) +
+  geom_line(aes(y = rec.s1), col = 'red') +
+  geom_line(aes(y = rec.s2), col = 'green') +
+  geom_line(aes(y = rec.phi), col = 'blue')
