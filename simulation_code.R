@@ -1,15 +1,16 @@
 library(dplyr)
 library(tidyr)
 
+rm(list = ls())
+
 ### Control functions
 
 # Individuals are stored in a data frame, containing age and alleles
 
 # Function for calculating a vital rate
 ## CURRENTLY MISTAKE IS HERE
-calc.vr = function(alls, params) c(params$mal.rate, params$rate, rate)[apply(alls, 1, sum) + 1] 
+calc.vr = function(alls, rate, mal.rate) c(mal.rate, rate, rate)[apply(alls, 1, sum) + 1] 
 # alls - alleles (coded as 0 or 1)
-# params is list with following elements
 # rate - vital rate value for dominant phenotype (higher vital rate)
 # mal.rate - vital rate for recessive phenotype (lower vital rate, `mal`)
 # sum of alleles of 0 gives recessive, sum 1 or 2 gives dominant
@@ -17,7 +18,7 @@ calc.vr = function(alls, params) c(params$mal.rate, params$rate, rate)[apply(all
 # Function intakes data frame of individuals's alleles, outputs their vital rates
 # (wrapper for use of calc.vr from above)
 ins.vrs = function(alls, params) {
-  attach(params)
+  suppressMessages(attach(params))
   df = alls %>%
     mutate(s1 = calc.vr(alls %>% select(s1.a, s1.b), s1, mal.s1), # see note for calc.vr
            s2 = calc.vr(alls %>% select(s2.a, s2.b), s2, mal.s2),
@@ -31,7 +32,7 @@ ins.vrs = function(alls, params) {
 init.popn = function(params) {
   # Returns population data frame (info below)
 
-  attach(params)
+  suppressMessages(attach(params))
   # Attaches the following variables to namespace:
   
   # # Initial population size
@@ -76,7 +77,7 @@ init.popn = function(params) {
 
 sample.alleles = function(df, parents, rate.string) {
   
-  alls = df[parents, grep(paste0(rate.string, '\\.', names(df)))] %>% unlist()
+  alls = df[parents, grep(paste0(rate.string, '\\.'), names(df))] %>% unlist()
   
   return(alls[1:length(parents) + length(parents) * sample(0:1, length(parents), replace = TRUE)])
 
@@ -105,7 +106,7 @@ reproduce = function(popn, params) {
     moms = rep(1:nrow(assign.parents), times = assign.parents$off)
     # Paternal parent is randomly sampled from adults, with replacement
     # NOTE: this allows for chance of selfing, inversely proportional to population size
-    dads = sample(which(assign.parents$age), size = sum(assign.parents$off), replace = TRUE)
+    dads = sample(which(assign.parents$age > 0), size = sum(assign.parents$off), replace = TRUE)
     
     # Generate offspring
     offspr = assign.parents %>%
@@ -115,13 +116,12 @@ reproduce = function(popn, params) {
       mutate(i = max(assign.parents$i) + 1:nrow(.),
              t = max(assign.parents$t) + 1,
              age = 0,
-             s1.a = sample.alleles(prev.gen, moms, 's1'),
-             s1.b = sample.alleles(prev.gen, dads, 's1'),
-             s2.a = sample.alleles(prev.gen, moms, 's2'),
-             s2.b = sample.alleles(prev.gen, dads, 's2'),
-             phi.a = sample.alleles(prev.gen, moms, 'phi'),
-             phi.b = sample.alleles(prev.gen, dads, 'phi')) %>%
-      ins.vrs()
+             s1.a = sample.alleles(assign.parents, moms, 's1'),
+             s1.b = sample.alleles(assign.parents, dads, 's1'),
+             s2.a = sample.alleles(assign.parents, moms, 's2'),
+             s2.b = sample.alleles(assign.parents, dads, 's2'),
+             phi.a = sample.alleles(assign.parents, moms, 'phi'),
+             phi.b = sample.alleles(assign.parents, dads, 'phi'))
     # sample_n() and mutate_all() is used to neatly copy and clear all columns
     
     return(offspr)
@@ -189,7 +189,7 @@ set.seed(1009)
 
 ### Detach is doing some funky stuff in here!!###
 ### Suppressing warnings to make this neater  ###
-all.gens = suppressMessages(init.popn(params = params))
+all.gens = init.popn(params = params)
 # t = 1
 
 # Create variable for previous generation
@@ -202,14 +202,10 @@ prev.gen = all.gens
 offspring = reproduce(prev.gen, params = params)
 
 
-
-# Intialize offspring data frame
-# Determine parents
-# Assign phenotypes
-# Age = 0, t = cur.gen
-
-
 ## Next, determine adult survival
 
+survivors = survival(prev.gen)
 # Age = 1, t = cur.gen
+
+all.gens = rbind(all.gens, offspring, survivors)
 
