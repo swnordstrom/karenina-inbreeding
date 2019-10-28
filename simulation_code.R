@@ -9,7 +9,6 @@ rm(list = ls())
 # Individuals are stored in a data frame, containing age and alleles
 
 # Function for calculating a vital rate
-## CURRENTLY MISTAKE IS HERE
 calc.vr = function(alls, rate, mal.rate) c(mal.rate, rate, rate)[apply(alls, 1, sum) + 1] 
 # alls - alleles (coded as 0 or 1)
 # rate - vital rate value for dominant phenotype (higher vital rate)
@@ -159,7 +158,8 @@ params = list(n.init = 99, # initial population size
               p.s1 = 10/11, # proportion of wild-type s1 allele
               p.s2 = 10/11, # proportion of wild-type s2 allele
               p.phi = 10/11, # proportion of wild-type phi allele
-              mu.mal = 0.95, # mean fitness for individual with ONE maladapted allele
+              mu.mal = 0.99, # mean fitness for individual with ONE maladapted allele
+              frags = 3, # number of fragments
               end.time = 30) # length of simulation
 params = c(params, 
            # initial stage distribution
@@ -246,3 +246,83 @@ alleles.by.t %>%
   geom_line(aes(y = rec.s1), col = 'red') +
   geom_line(aes(y = rec.s2), col = 'green') +
   geom_line(aes(y = rec.phi), col = 'blue')
+
+### 
+
+iterate.gens = function(init.gen, params, print.bool = FALSE) {
+  
+  prev.gen = init.gen
+  all.gens = prev.gen
+  
+  for (t in 2:params$end.time) {
+    
+    if(print.bool) print(t)
+    
+    ## If there are individuals in the next generation,
+    ## Produce offspring
+    offspring = reproduce(prev.gen, params = params)
+    # Age = 0
+    
+    ## Next, determine adult survival
+    survivors = survival(prev.gen)
+    # Age = 1, time = t
+    
+    all.gens = rbind(all.gens, offspring, survivors)
+    prev.gen = rbind(offspring, survivors)
+    
+    if (!nrow(prev.gen)) return(all.gens)
+    
+  }
+  
+  return(all.gens)
+  
+}
+
+simulate.frag = function(params) {
+  
+  init.gen = init.popn(params = params)
+  # t = 1
+  
+  init.gen = init.gen %>%
+    mutate(frag = sample(1:params$frags, size = params$n.init, replace = TRUE))
+  
+  # all.gens = iterate.gens(init.gen, params, print.bool = FALSE)
+  
+  # ugh... not elegant but do it this way
+  
+  for (frag in 1:params$frags) {
+    assign(paste0('frag', frag), 
+           iterate.gens(init.gen[init.gen$frag %in% frag,] %>% select(-frag), params) %>%
+             mutate(frag = frag))
+  }
+  
+  head(frag1)
+
+  all.gens = mget(grep('frag\\d', ls(), value = TRUE)) %>% do.call(what = rbind)
+  
+  return(all.gens)
+    
+}
+
+argh = simulate.frag(params)
+
+alleles.by.t = argh %>%
+  group_by(t, frag) %>%
+  summarise(mean.s1 = 0.5 * mean(s1.a + s1.b),
+            mean.s2 = 0.5 * mean(s2.a + s2.b),
+            mean.phi = 0.5 * mean(phi.a + phi.b),
+            rec.s1 = mean(!(s1.a + s1.b)),
+            rec.s2 = mean(!(s2.a + s2.b)),
+            rec.phi = mean(!(phi.a + phi.b)))
+
+alleles.by.t %>%
+  ggplot(aes(x = t)) +
+  geom_line(aes(y = mean.s1, group = frag), col = 'red') +
+  geom_line(aes(y = mean.s2, group = frag), col = 'green') +
+  geom_line(aes(y = mean.phi, group = frag), col = 'blue')
+
+alleles.by.t %>%
+  ggplot(aes(x = t)) +
+  geom_line(aes(y = rec.s1, group = frag), col = 'red') +
+  geom_line(aes(y = rec.s2, group = frag), col = 'green') +
+  geom_line(aes(y = rec.phi, group = frag), col = 'blue')
