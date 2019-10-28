@@ -152,7 +152,7 @@ survival = function(popn) {
 params = list(n.init = 99, # initial population size
               s1 = 0.5, # survival of juveniles
               s2 = 0.6, # survival of adults
-              phi = 1.05, # fecundity of adults
+              phi = 1.0, # fecundity of adults
               p.s1 = 10/11, # proportion of wild-type s1 allele
               p.s2 = 10/11, # proportion of wild-type s2 allele
               p.phi = 10/11, # proportion of wild-type phi allele
@@ -194,18 +194,25 @@ all.gens = init.popn(params = params)
 
 # Create variable for previous generation
 prev.gen = all.gens
-### Next, run through generations
-### For generation in generations 1:t
 
-## If there are individuals in the next generation,
-## Produce offspring
-offspring = reproduce(prev.gen, params = params)
+for (t in 1:params$end.time) {
+  
+  ### Next, run through generations
+  ### For generation in generations 1:t
+  
+  ## If there are individuals in the next generation,
+  ## Produce offspring
+  offspring = reproduce(prev.gen, params = params)
+  
+  
+  ## Next, determine adult survival
+  
+  survivors = survival(prev.gen)
+  # Age = 1, t = cur.gen
+  
+  all.gens = rbind(all.gens, offspring, survivors)
+  prev.gen = rbind(offspring, survivors)
+  
+}
 
-
-## Next, determine adult survival
-
-survivors = survival(prev.gen)
-# Age = 1, t = cur.gen
-
-all.gens = rbind(all.gens, offspring, survivors)
-
+table(all.gens$t) %>% plot(type = 'l')
